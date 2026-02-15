@@ -7,7 +7,7 @@ from google.genai import types
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="PQA Analyst Gemini 3", layout="wide")
-st.title("⚡ Power Quality AI Analyst (PT Putra Arga Binangun)")
+st.title("⚡ Power Quality AI Analyst (PT Lucky Indah Keramik)")
 
 # --- KONEKSI GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
