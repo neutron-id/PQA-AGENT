@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
 import gspread
-import time
 from oauth2client.service_account import ServiceAccountCredentials
 from google import genai
 from google.genai import types
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="Power Quality AI Analyst", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Final Fix 2026)")
+st.set_page_config(page_title="PQA Analyst 2026", layout="wide")
+st.title("⚡ Power Quality AI Analyst (Gemini 2.0 Stable)")
 
 # --- KONEKSI GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -20,68 +19,53 @@ def load_data():
         client = gspread.authorize(creds)
         sheet_name = st.secrets["SHEET_NAME"]
         sheet = client.open(sheet_name).sheet1
-        
-        # Mengambil data terbaru (mendukung hingga 14760+ baris)
         data = sheet.get_all_records()
-        df = pd.DataFrame(data)
-        return df
+        return pd.DataFrame(data)
     except Exception as e:
-        st.error(f"Gagal memuat data Sheet: {e}")
+        st.error(f"Gagal memuat data: {e}")
         return None
 
 df = load_data()
 
 if df is not None:
-    st.success(f"✅ Sistem Terhubung. Memproses {len(df)} baris data Power Quality.")
-    
-    with st.expander("Klik untuk melihat tabel data mentah"):
-        st.dataframe(df.tail(10))
+    st.success(f"✅ Data Terhubung: {len(df)} baris.")
 
-    # --- KONFIGURASI AI (GEMINI 2.0 FLASH - KUOTA 1.5K) ---
+    # --- KONFIGURASI SDK GEMINI 2.0 ---
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     
+    # Instruksi agar AI fokus pada data PQA Anda
     instruksi_sistem = f"""
-    Anda adalah analis energi profesional PT Putra Arga Binangun.
+    Anda adalah analis energi untuk PT Putra Arga Binangun.
     Dataset Anda adalah dataframe 'df' dengan kolom: {list(df.columns)}.
     
     ATURAN:
-    1. JANGAN memberikan jawaban berupa kode Python ke user.
-    2. Gunakan fitur 'Code Execution' untuk memproses data secara internal.
-    3. Jawab langsung dengan angka/fakta dan penjelasan singkat dalam Bahasa Indonesia.
-    4. Selalu sertakan satuan (Volt, Ampere, kWh, dll).
-    5. Jika ditanya data terbaru, gunakan data di baris paling akhir.
+    1. Jawab langsung hasil analisanya, JANGAN berikan kode Python ke user.
+    2. Gunakan 'Code Execution' untuk menghitung data secara akurat.
+    3. Jika ditanya data terbaru, cek baris paling akhir.
+    4. Bahasa: Indonesia yang profesional.
     """
 
-    prompt = st.chat_input("Tanya data tegangan atau arus PM1...")
+    prompt = st.chat_input("Tanya data energi atau tegangan...")
     
     if prompt:
         with st.chat_message("user"):
             st.write(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Menganalisa data menggunakan Gemini 2.0 Flash..."):
-                max_retries = 3
-                for i in range(max_retries):
-                    try:
-                        # Menggunakan model 2.0 Flash dengan jatah 1.5K RPD
-                        response = client.models.generate_content(
-                            model="gemini-2.0-flash", 
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                system_instruction=instruksi_sistem,
-                                tools=[{'code_execution': {}}], 
-                            ),
-                        )
-                        st.write(response.text)
-                        break # Berhasil, keluar dari loop
-                        
-                    except Exception as e:
-                        if "429" in str(e) and i < max_retries - 1:
-                            st.warning(f"Antrean penuh. Mencoba lagi dalam 5 detik... (Percobaan {i+1}/{max_retries})")
-                            time.sleep(5)
-                        elif "404" in str(e):
-                            st.error("Model tidak ditemukan. Pastikan nama model 'gemini-2.0-flash' tersedia di wilayah Anda.")
-                            break
-                        else:
-                            st.error(f"Terjadi kendala teknis: {e}")
-                            break
+            with st.spinner("Gemini 2.0 sedang menganalisa..."):
+                try:
+                    # Menggunakan model gemini-2.0-flash (Jatah 1.5K RPD)
+                    response = client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=[prompt],
+                        config=types.GenerateContentConfig(
+                            system_instruction=instruksi_sistem,
+                            tools=[{'code_execution': {}}],
+                        ),
+                    )
+                    st.write(response.text)
+                except Exception as e:
+                    if "429" in str(e):
+                        st.error("Batas menit (15 RPM) tercapai. Tunggu 15 detik ya.")
+                    else:
+                        st.error(f"Terjadi kendala: {e}")
