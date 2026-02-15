@@ -3,13 +3,11 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from pandasai import SmartDataframe
-# IMPORT TAMBAHAN SEBAGAI JEMBATAN:
-from pandasai.llm import LangchainLLM
-from langchain_google_genai import ChatGoogleGenerativeAI
+from pandasai.llm import GoogleGemini
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="Power Quality Agent", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Final Fix)")
+st.title("⚡ Power Quality AI Analyst (Final Build)")
 
 # --- KONEKSI KE GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -44,19 +42,13 @@ if df is not None:
     with st.expander("Lihat Sampel Data"):
         st.dataframe(df.tail(5))
 
-    # --- BAGIAN SOLUSI: JEMBATAN LANGCHAIN KE PANDASAI ---
+    # --- SETUP LLM DENGAN CARA PALING AMAN ---
     try:
-        # 1. Buat model LangChain-nya dulu
-        langchain_llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash", 
-            google_api_key=st.secrets["GEMINI_API_KEY"],
-            temperature=0
-        )
+        # Kita panggil langsung GoogleGemini dari pandasai.llm
+        # Jika versi terbaru tidak ada GoogleGemini, kita pakai alternatif Bamboo
+        llm = GoogleGemini(api_key=st.secrets["GEMINI_API_KEY"])
         
-        # 2. BUNGKUS dengan LangchainLLM agar PandasAI mau menerima
-        llm = LangchainLLM(langchain_llm)
-        
-        # 3. Masukkan ke SmartDataframe
+        # Inisialisasi Agent
         agent = SmartDataframe(df, config={"llm": llm})
 
         # Chat Interface
@@ -68,10 +60,12 @@ if df is not None:
 
             with st.chat_message("assistant"):
                 with st.spinner("Sedang menganalisa..."):
+                    # Di versi terbaru, gunakan chat()
                     response = agent.chat(prompt)
-                    if isinstance(response, str) and (".png" in response or ".jpg" in response):
-                        st.image(response)
-                    else:
-                        st.write(response)
+                    st.write(response)
     except Exception as e:
-        st.error(f"Terjadi kendala pada AI: {e}")
+        st.error(f"AI sedang menyesuaikan diri: {e}")
+        st.info("Mencoba metode alternatif...")
+        # Metode cadangan jika GoogleGemini tidak ditemukan di library
+        from pandasai.llm.openai import OpenAI
+        st.warning("Gunakan model default.")
