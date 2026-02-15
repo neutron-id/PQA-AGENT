@@ -3,7 +3,7 @@ pandas
 numpy<2
 gspread
 oauth2client
-pandasai==2.2.0
+pandasai
 google-generativeai
 matplotlib
 PyYAML
