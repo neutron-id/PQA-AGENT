@@ -46,7 +46,7 @@ if df is not None:
         st.dataframe(df.tail(5))
 
     # Setup Agent
-    llm = GoogleGemini(api_key=st.secrets["GEMINI_API_KEY"])
+    llm = GoogleGemini(api_key=st.secrets["GEMINI_API_KEY"], model="gemini-1.5-flash")
     agent = SmartDataframe(df, config={"llm": llm})
 
     # Chat Interface
