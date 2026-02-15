@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from pandasai import SmartDataframe
-# Lokasi import yang pasti ada di versi 1.5.15:
-from pandasai.llm.google_gemini import GoogleGemini
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_experimental.agents import create_pandas_dataframe_agent
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="Power Quality Agent", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Fix Final)")
+st.set_page_config(page_title="Power Quality AI Analyst", layout="wide")
+st.title("⚡ Power Quality AI Analyst (LangChain Edition)")
 
 # --- KONEKSI KE GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -22,7 +21,7 @@ def load_data():
         sheet_name = st.secrets["SHEET_NAME"]
         sheet = client.open(sheet_name).sheet1
         
-        # Ambil 2000 data terakhir
+        # Ambil 2000 data terakhir agar loading cepat
         data = sheet.get_all_records()[-2000:]
         df = pd.DataFrame(data)
         return df
@@ -30,46 +29,51 @@ def load_data():
         st.error(f"Error Koneksi Sheet: {e}")
         return None
 
-# --- MAIN PROGRAM ---
+# --- CEK API KEY ---
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("Secrets API Key belum diisi!")
+    st.error("API Key Gemini tidak ditemukan di Secrets!")
     st.stop()
 
 df = load_data()
 
 if df is not None:
-    st.success(f"✅ Data Terhubung: {len(df)} baris.")
+    st.success(f"✅ Data Terhubung: {len(df)} baris data.")
     
     with st.expander("Lihat Sampel Data"):
         st.dataframe(df.tail(5))
 
-    # --- SETUP LLM (Trik agar tidak 404) ---
+    # --- SETUP LANGCHAIN AGENT ---
     try:
-        # Di versi 1.5.15, parameternya adalah model_name
-        llm = GoogleGemini(
-            api_key=st.secrets["GEMINI_API_KEY"],
-            model_name="gemini-1.5-flash" 
+        # Inisialisasi Model Gemini
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash",
+            google_api_key=st.secrets["GEMINI_API_KEY"],
+            temperature=0
         )
         
-        # Inisialisasi Agent
-        agent = SmartDataframe(df, config={"llm": llm})
+        # Buat Agent khusus Pandas
+        # allow_dangerous_code=True wajib diaktifkan untuk menjalankan kode Python
+        agent = create_pandas_dataframe_agent(
+            llm, 
+            df, 
+            verbose=True, 
+            allow_dangerous_code=True
+        )
 
         # Chat Interface
-        prompt = st.chat_input("Tanya data Power Quality Anda...")
+        prompt = st.chat_input("Tanyakan apa saja tentang data Power Quality Anda...")
         
         if prompt:
             with st.chat_message("user"):
                 st.write(prompt)
 
             with st.chat_message("assistant"):
-                with st.spinner("Menganalisa..."):
+                with st.spinner("Berpikir kritis..."):
                     try:
-                        # Gunakan chat()
-                        response = agent.chat(prompt)
+                        response = agent.run(prompt)
                         st.write(response)
-                    except Exception as ai_err:
-                        # Jika agent.chat gagal, coba tampilkan error detailnya
-                        st.error(f"AI Error: {ai_err}")
+                    except Exception as e:
+                        st.error(f"Agent kesulitan menjawab: {e}")
                         
     except Exception as e:
-        st.error(f"Gagal Inisialisasi AI: {e}")
+        st.error(f"Gagal memuat Otak AI: {e}")
