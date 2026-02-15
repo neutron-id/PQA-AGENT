@@ -6,3 +6,4 @@ oauth2client
 pandasai==2.2.0
 google-generativeai
 matplotlib
+PyYAML
