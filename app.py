@@ -3,18 +3,12 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from pandasai import SmartDataframe
-
-# --- PERBAIKAN IMPORT (Try-Except agar tidak Error) ---
-try:
-    # Coba alamat folder baru
-    from pandasai.llm.google_gemini import GoogleGemini
-except ImportError:
-    # Jika gagal, pakai alamat folder lama
-    from pandasai.llm import GoogleGemini
+# Lokasi import yang pasti ada di versi 1.5.15:
+from pandasai.llm.google_gemini import GoogleGemini
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="Power Quality Agent", layout="wide")
-st.title("⚡ Power Quality AI Analyst (V6)")
+st.title("⚡ Power Quality AI Analyst (Fix Final)")
 
 # --- KONEKSI KE GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -49,12 +43,12 @@ if df is not None:
     with st.expander("Lihat Sampel Data"):
         st.dataframe(df.tail(5))
 
-    # --- SETUP LLM (Solusi Error 404) ---
+    # --- SETUP LLM (Trik agar tidak 404) ---
     try:
-        # Gunakan model_name secara eksplisit untuk menghindari default gemini-pro
+        # Di versi 1.5.15, parameternya adalah model_name
         llm = GoogleGemini(
-            api_key=st.secrets["GEMINI_API_KEY"], 
-            model_name="gemini-1.5-flash"
+            api_key=st.secrets["GEMINI_API_KEY"],
+            model_name="gemini-1.5-flash" 
         )
         
         # Inisialisasi Agent
@@ -68,9 +62,14 @@ if df is not None:
                 st.write(prompt)
 
             with st.chat_message("assistant"):
-                with st.spinner("Menganalisa data..."):
-                    # Gunakan chat() untuk versi terbaru
-                    response = agent.chat(prompt)
-                    st.write(response)
+                with st.spinner("Menganalisa..."):
+                    try:
+                        # Gunakan chat()
+                        response = agent.chat(prompt)
+                        st.write(response)
+                    except Exception as ai_err:
+                        # Jika agent.chat gagal, coba tampilkan error detailnya
+                        st.error(f"AI Error: {ai_err}")
+                        
     except Exception as e:
-        st.error(f"Kendala AI: {e}")
+        st.error(f"Gagal Inisialisasi AI: {e}")
