@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
 import gspread
+import time
 from oauth2client.service_account import ServiceAccountCredentials
 from google import genai
 from google.genai import types
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="Power Quality AI Analyst", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Fix 2026)")
+st.title("⚡ Power Quality AI Analyst (Final Fix 2026)")
 
 # --- KONEKSI GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -20,7 +21,7 @@ def load_data():
         sheet_name = st.secrets["SHEET_NAME"]
         sheet = client.open(sheet_name).sheet1
         
-        # Ambil seluruh data (14760+ baris)
+        # Mengambil data terbaru (mendukung hingga 14760+ baris)
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         return df
@@ -31,56 +32,56 @@ def load_data():
 df = load_data()
 
 if df is not None:
-    st.success(f"✅ Sistem Terhubung. Memproses {len(df)} baris data.")
+    st.success(f"✅ Sistem Terhubung. Memproses {len(df)} baris data Power Quality.")
     
     with st.expander("Klik untuk melihat tabel data mentah"):
         st.dataframe(df.tail(10))
 
-    # --- KONFIGURASI AI (GEMINI 2.0 FLASH - JATAH 1.5K) ---
+    # --- KONFIGURASI AI (GEMINI 2.0 FLASH - KUOTA 1.5K) ---
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     
     instruksi_sistem = f"""
-    Anda adalah analis energi profesional. 
-    Gunakan dataframe 'df' dengan kolom: {list(df.columns)}.
+    Anda adalah analis energi profesional PT Putra Arga Binangun.
+    Dataset Anda adalah dataframe 'df' dengan kolom: {list(df.columns)}.
     
-    TUGAS:
-    1. JANGAN memberikan jawaban berupa kode Python.
-    2. Gunakan 'Code Execution' secara internal untuk menghitung data.
+    ATURAN:
+    1. JANGAN memberikan jawaban berupa kode Python ke user.
+    2. Gunakan fitur 'Code Execution' untuk memproses data secara internal.
     3. Jawab langsung dengan angka/fakta dan penjelasan singkat dalam Bahasa Indonesia.
-    4. Selalu sertakan satuan (kWh, Volt, Ampere).
+    4. Selalu sertakan satuan (Volt, Ampere, kWh, dll).
+    5. Jika ditanya data terbaru, gunakan data di baris paling akhir.
     """
 
-    prompt = st.chat_input("Tanya data energi atau tegangan...")
+    prompt = st.chat_input("Tanya data tegangan atau arus PM1...")
     
     if prompt:
         with st.chat_message("user"):
             st.write(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Menganalisa menggunakan Gemini 2.0 Flash..."):
-                try:
-                    # GUNAKAN NAMA MODEL YANG TEPAT (JALUR 1.500 RPD)
-                    response = client.models.generate_content(
-                        model="gemini-2.0-flash", 
-                        contents=[prompt],
-                        config=types.GenerateContentConfig(
-                            system_instruction=instruksi_sistem,
-                            tools=[{'code_execution': {}}], 
-                        ),
-                    )
-                    st.write(response.text)
-                    
-                except Exception as e:
-                    if "404" in str(e):
-                        st.error("Model 2.0 Flash tidak ditemukan. Sedang mencoba model alternatif...")
-                        # Fallback jika model 2.0 masih transisi di region Anda
+            with st.spinner("Menganalisa data menggunakan Gemini 2.0 Flash..."):
+                max_retries = 3
+                for i in range(max_retries):
+                    try:
+                        # Menggunakan model 2.0 Flash dengan jatah 1.5K RPD
                         response = client.models.generate_content(
-                            model="gemini-1.5-flash",
+                            model="gemini-2.0-flash", 
                             contents=[prompt],
-                            config=types.GenerateContentConfig(system_instruction=instruksi_sistem, tools=[{'code_execution': {}}])
+                            config=types.GenerateContentConfig(
+                                system_instruction=instruksi_sistem,
+                                tools=[{'code_execution': {}}], 
+                            ),
                         )
                         st.write(response.text)
-                    elif "429" in str(e):
-                        st.error("Antrean penuh. Tunggu 15 detik ya.")
-                    else:
-                        st.error(f"Kendala: {e}")
+                        break # Berhasil, keluar dari loop
+                        
+                    except Exception as e:
+                        if "429" in str(e) and i < max_retries - 1:
+                            st.warning(f"Antrean penuh. Mencoba lagi dalam 5 detik... (Percobaan {i+1}/{max_retries})")
+                            time.sleep(5)
+                        elif "404" in str(e):
+                            st.error("Model tidak ditemukan. Pastikan nama model 'gemini-2.0-flash' tersedia di wilayah Anda.")
+                            break
+                        else:
+                            st.error(f"Terjadi kendala teknis: {e}")
+                            break
