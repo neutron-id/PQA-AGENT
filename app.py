@@ -7,7 +7,7 @@ from google.genai import types
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="Power Quality AI Analyst", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Pro Edition 2026)")
+st.title("⚡ Power Quality AI Analyst (Gemini 2 Flash Edition)")
 
 # --- KONEKSI GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -20,7 +20,7 @@ def load_data():
         sheet_name = st.secrets["SHEET_NAME"]
         sheet = client.open(sheet_name).sheet1
         
-        # Ambil 2000 data terakhir untuk analisa mendalam
+        # Ambil seluruh data untuk analisa mendalam
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         return df
@@ -36,43 +36,46 @@ if df is not None:
     with st.expander("Klik untuk melihat tabel data mentah"):
         st.dataframe(df.tail(10))
 
-    # --- KONFIGURASI AI (SDK TERBARU) ---
+    # --- KONFIGURASI AI (GEMINI 2 FLASH) ---
+    # Menggunakan model dengan kuota 1.500 RPD agar bebas macet
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # Instruksi agar AI langsung menjawab hasil, bukan memberi kode
     instruksi_sistem = f"""
-    Anda adalah asisten cerdas Power Quality untuk PT LUCKY INDAH KERAMIK.
-    Tugas Anda adalah menganalisis dataframe bernama 'df' yang memiliki kolom: {list(df.columns)}.
+    Anda adalah analis energi profesional untuk PT LUCKY INDAH KERAMIK.
+    Dataset Anda adalah dataframe bernama 'df' dengan kolom: {list(df.columns)}.
     
-    ATURAN PENTING:
-    1. JANGAN memberikan potongan kode Python kepada user.
-    2. Jalankan kode Python secara internal untuk menemukan jawaban.
-    3. Jawablah langsung dengan data/angka dan penjelasan singkat dalam Bahasa Indonesia.
-    4. Jika ditanya data 'terakhir' atau 'sekarang', gunakan baris paling akhir dari dataset.
-    5. Selalu sertakan satuan (Volt, Ampere, kWh, dll).
+    TUGAS ANDA:
+    1. JANGAN memberikan jawaban berupa kode Python.
+    2. Gunakan fitur Code Execution untuk menghitung atau memproses data secara internal.
+    3. Jawab pertanyaan user langsung dengan angka, fakta, dan penjelasan singkat (Bahasa Indonesia).
+    4. Selalu sertakan satuan yang relevan (misal: kWh, Volt, Ampere).
+    5. Jika ditanya data terbaru, gunakan baris paling akhir di dataframe.
     """
 
-    prompt = st.chat_input("Tanya apa saja (contoh: Berapa rata-rata tegangan di PM1 hari ini?)")
+    prompt = st.chat_input("Tanya data energi atau tegangan (Contoh: Berapa total kWh PM1 hari ini?)")
     
     if prompt:
         with st.chat_message("user"):
             st.write(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Sedang menghitung data..."):
+            with st.spinner("Menganalisa data menggunakan Gemini 2 Flash..."):
                 try:
-                    # Mengaktifkan FITUR CODE EXECUTION
+                    # Eksekusi dengan model Gemini 2 Flash (Jalur 1.5K RPD)
                     response = client.models.generate_content(
-                        model="gemini-2.0-flash", # Gunakan model stabil terbaru
+                        model="gemini-2-flash", 
                         contents=[prompt],
                         config=types.GenerateContentConfig(
                             system_instruction=instruksi_sistem,
-                            tools=[{'code_execution': {}}], # Ini kunci agar tidak muncul kode
+                            tools=[{'code_execution': {}}], 
                         ),
                     )
                     
-                    # Menampilkan jawaban akhir saja
+                    # Menampilkan hasil akhir dari proses pemikiran AI
                     st.write(response.text)
                     
                 except Exception as e:
-                    st.error(f"Sistem AI sedang sibuk: {e}")
+                    if "429" in str(e):
+                        st.error("Antrean penuh (RPM Limit). Tunggu 15 detik lalu coba lagi.")
+                    else:
+                        st.error(f"Terjadi kendala teknis: {e}")
