@@ -7,7 +7,7 @@ from pandasai.llm import GoogleGemini
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="Power Quality Agent", layout="wide")
-st.title("⚡ Power Quality AI Analyst (v2)")
+st.title("⚡ Power Quality AI Analyst (v3)")
 
 # --- KONEKSI KE GOOGLE SHEETS VIA SECRETS ---
 @st.cache_data(ttl=60)
@@ -46,7 +46,7 @@ if df is not None:
         st.dataframe(df.tail(5))
 
     # Setup Agent
-    llm = GoogleGemini(api_key=st.secrets["GEMINI_API_KEY"], model="models/gemini-1.5-flash")
+    llm = GoogleGemini(api_key=st.secrets["GEMINI_API_KEY"], model="gemini-1.5-flash")
     agent = SmartDataframe(df, config={"llm": llm})
 
     # Chat Interface
