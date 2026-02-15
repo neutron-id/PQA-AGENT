@@ -1,9 +1,8 @@
 streamlit
 pandas
-numpy<2
 gspread
 oauth2client
-pandasai==1.5.15
-google-generativeai
-matplotlib
-PyYAML
+langchain
+langchain-google-genai
+langchain-experimental
+tabulate
