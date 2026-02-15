@@ -7,7 +7,7 @@ from google.genai import types
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="Power Quality AI Analyst", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Gemini 2 Flash Edition)")
+st.title("⚡ Power Quality AI Analyst (Fix 2026)")
 
 # --- KONEKSI GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -20,7 +20,7 @@ def load_data():
         sheet_name = st.secrets["SHEET_NAME"]
         sheet = client.open(sheet_name).sheet1
         
-        # Ambil seluruh data untuk analisa mendalam
+        # Ambil seluruh data (14760+ baris)
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         return df
@@ -31,51 +31,56 @@ def load_data():
 df = load_data()
 
 if df is not None:
-    st.success(f"✅ Sistem Terhubung. Memproses {len(df)} baris data Power Quality.")
+    st.success(f"✅ Sistem Terhubung. Memproses {len(df)} baris data.")
     
     with st.expander("Klik untuk melihat tabel data mentah"):
         st.dataframe(df.tail(10))
 
-    # --- KONFIGURASI AI (GEMINI 2 FLASH) ---
-    # Menggunakan model dengan kuota 1.500 RPD agar bebas macet
+    # --- KONFIGURASI AI (GEMINI 2.0 FLASH - JATAH 1.5K) ---
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     
     instruksi_sistem = f"""
-    Anda adalah analis energi profesional untuk PT LUCKY INDAH KERAMIK.
-    Dataset Anda adalah dataframe bernama 'df' dengan kolom: {list(df.columns)}.
+    Anda adalah analis energi profesional. 
+    Gunakan dataframe 'df' dengan kolom: {list(df.columns)}.
     
-    TUGAS ANDA:
+    TUGAS:
     1. JANGAN memberikan jawaban berupa kode Python.
-    2. Gunakan fitur Code Execution untuk menghitung atau memproses data secara internal.
-    3. Jawab pertanyaan user langsung dengan angka, fakta, dan penjelasan singkat (Bahasa Indonesia).
-    4. Selalu sertakan satuan yang relevan (misal: kWh, Volt, Ampere).
-    5. Jika ditanya data terbaru, gunakan baris paling akhir di dataframe.
+    2. Gunakan 'Code Execution' secara internal untuk menghitung data.
+    3. Jawab langsung dengan angka/fakta dan penjelasan singkat dalam Bahasa Indonesia.
+    4. Selalu sertakan satuan (kWh, Volt, Ampere).
     """
 
-    prompt = st.chat_input("Tanya data energi atau tegangan (Contoh: Berapa total kWh PM1 hari ini?)")
+    prompt = st.chat_input("Tanya data energi atau tegangan...")
     
     if prompt:
         with st.chat_message("user"):
             st.write(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Menganalisa data menggunakan Gemini 2 Flash..."):
+            with st.spinner("Menganalisa menggunakan Gemini 2.0 Flash..."):
                 try:
-                    # Eksekusi dengan model Gemini 2 Flash (Jalur 1.5K RPD)
+                    # GUNAKAN NAMA MODEL YANG TEPAT (JALUR 1.500 RPD)
                     response = client.models.generate_content(
-                        model="gemini-2-flash", 
+                        model="gemini-2.0-flash", 
                         contents=[prompt],
                         config=types.GenerateContentConfig(
                             system_instruction=instruksi_sistem,
                             tools=[{'code_execution': {}}], 
                         ),
                     )
-                    
-                    # Menampilkan hasil akhir dari proses pemikiran AI
                     st.write(response.text)
                     
                 except Exception as e:
-                    if "429" in str(e):
-                        st.error("Antrean penuh (RPM Limit). Tunggu 15 detik lalu coba lagi.")
+                    if "404" in str(e):
+                        st.error("Model 2.0 Flash tidak ditemukan. Sedang mencoba model alternatif...")
+                        # Fallback jika model 2.0 masih transisi di region Anda
+                        response = client.models.generate_content(
+                            model="gemini-1.5-flash",
+                            contents=[prompt],
+                            config=types.GenerateContentConfig(system_instruction=instruksi_sistem, tools=[{'code_execution': {}}])
+                        )
+                        st.write(response.text)
+                    elif "429" in str(e):
+                        st.error("Antrean penuh. Tunggu 15 detik ya.")
                     else:
-                        st.error(f"Terjadi kendala teknis: {e}")
+                        st.error(f"Kendala: {e}")
