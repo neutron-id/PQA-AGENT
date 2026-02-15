@@ -2,7 +2,8 @@ streamlit
 pandas
 gspread
 oauth2client
-langchain
-langchain-google-genai
+langchain>=0.3.0
+langchain-google-genai>=2.0.0
 langchain-experimental
 tabulate
+google-generativeai>=0.7.2
