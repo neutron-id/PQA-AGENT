@@ -3,11 +3,18 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from pandasai import SmartDataframe
-from pandasai.llm import GoogleGemini
+
+# --- PERBAIKAN IMPORT (Try-Except agar tidak Error) ---
+try:
+    # Coba alamat folder baru
+    from pandasai.llm.google_gemini import GoogleGemini
+except ImportError:
+    # Jika gagal, pakai alamat folder lama
+    from pandasai.llm import GoogleGemini
 
 # --- SETUP HALAMAN ---
 st.set_page_config(page_title="Power Quality Agent", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Final Build)")
+st.title("⚡ Power Quality AI Analyst (V6)")
 
 # --- KONEKSI KE GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
@@ -21,7 +28,7 @@ def load_data():
         sheet_name = st.secrets["SHEET_NAME"]
         sheet = client.open(sheet_name).sheet1
         
-        # Ambil 2000 baris terakhir
+        # Ambil 2000 data terakhir
         data = sheet.get_all_records()[-2000:]
         df = pd.DataFrame(data)
         return df
@@ -31,22 +38,24 @@ def load_data():
 
 # --- MAIN PROGRAM ---
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("Secrets belum diisi!")
+    st.error("Secrets API Key belum diisi!")
     st.stop()
 
 df = load_data()
 
 if df is not None:
-    st.success(f"✅ Data Terhubung: {len(df)} baris data.")
+    st.success(f"✅ Data Terhubung: {len(df)} baris.")
     
     with st.expander("Lihat Sampel Data"):
         st.dataframe(df.tail(5))
 
-    # --- SETUP LLM DENGAN CARA PALING AMAN ---
+    # --- SETUP LLM (Solusi Error 404) ---
     try:
-        # Kita panggil langsung GoogleGemini dari pandasai.llm
-        # Jika versi terbaru tidak ada GoogleGemini, kita pakai alternatif Bamboo
-        llm = GoogleGemini(api_key=st.secrets["GEMINI_API_KEY"])
+        # Gunakan model_name secara eksplisit untuk menghindari default gemini-pro
+        llm = GoogleGemini(
+            api_key=st.secrets["GEMINI_API_KEY"], 
+            model_name="gemini-1.5-flash"
+        )
         
         # Inisialisasi Agent
         agent = SmartDataframe(df, config={"llm": llm})
@@ -59,13 +68,9 @@ if df is not None:
                 st.write(prompt)
 
             with st.chat_message("assistant"):
-                with st.spinner("Sedang menganalisa..."):
-                    # Di versi terbaru, gunakan chat()
+                with st.spinner("Menganalisa data..."):
+                    # Gunakan chat() untuk versi terbaru
                     response = agent.chat(prompt)
                     st.write(response)
     except Exception as e:
-        st.error(f"AI sedang menyesuaikan diri: {e}")
-        st.info("Mencoba metode alternatif...")
-        # Metode cadangan jika GoogleGemini tidak ditemukan di library
-        from pandasai.llm.openai import OpenAI
-        st.warning("Gunakan model default.")
+        st.error(f"Kendala AI: {e}")
