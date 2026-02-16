@@ -5,102 +5,95 @@ from oauth2client.service_account import ServiceAccountCredentials
 from google import genai
 from google.genai import types
 
-# --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="PQA Analyst Global", layout="wide")
-st.title("⚡ Power Quality AI Analyst (Full History Mode)")
+# --- CONFIG ---
+st.set_page_config(page_title="PQA Analyst Pro", layout="wide")
+st.title("⚡ Power Quality AI Analyst (Optimized Mode)")
 
-# --- KONEKSI GOOGLE SHEETS ---
-@st.cache_data(ttl=60)
-def load_data():
+# --- 1. FUNGSI LOAD DATA (DIOPTIMALKAN) ---
+@st.cache_data(ttl=300) # Data disimpan di cache selama 5 menit
+def get_optimized_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         key_dict = dict(st.secrets["gcp_service_account"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
         client = gspread.authorize(creds)
-        sheet_name = st.secrets["SHEET_NAME"]
-        sheet = client.open(sheet_name).sheet1
-        data = sheet.get_all_records()
-        return pd.DataFrame(data)
+        sheet = client.open(st.secrets["SHEET_NAME"]).sheet1
+        
+        # Ambil data
+        records = sheet.get_all_records()
+        full_df = pd.DataFrame(records)
+        
+        # Ringkasan Statistik (Dihitung SEKALI saja di sini)
+        total_rows = len(full_df)
+        first_row = full_df.iloc[0].to_dict()
+        last_row = full_df.iloc[-1].to_dict()
+        
+        # Ambil hanya kolom angka untuk statistik agar cepat
+        num_df = full_df.select_dtypes(include=['number'])
+        summary_stats = num_df.agg(['mean', 'max', 'min']).to_dict()
+        
+        return full_df, total_rows, first_row, last_row, summary_stats
     except Exception as e:
-        st.error(f"Gagal memuat data: {e}")
-        return None
+        return None, 0, None, None, str(e)
 
-df = load_data()
+# Jalankan Load Data
+with st.spinner("Sinkronisasi database 14.000+ baris..."):
+    df, total, start_data, end_data, stats = get_optimized_data()
 
-if df is not None:
-    # --- PROSES METADATA (Mata Global AI) ---
-    total_rows = len(df)
-    
-    # Deteksi Kolom Waktu Otomatis (Timestamp/Date/Time)
-    # Kita ambil baris pertama (Sejarah) dan terakhir (Sekarang)
-    first_record = df.iloc[0].to_dict()
-    last_record = df.iloc[-1].to_dict()
-    
-    # Hitung Statistik Sederhana untuk memperkuat analisa AI
-    # (Hanya jika kolom tersebut angka)
-    numeric_df = df.select_dtypes(include=['number'])
-    stats_summary = ""
-    if not numeric_df.empty:
-        stats_summary = numeric_df.describe().loc[['mean', 'max', 'min']].to_string()
+if df is not None and not isinstance(df, str):
+    st.success(f"✅ Database Sinkron: {total} baris terdeteksi.")
 
-    st.success(f"✅ Sistem Aktif: {total_rows} baris data dari seluruh periode terdeteksi.")
-
-    # --- SETUP GEMINI 3 SDK ---
+    # --- 2. SETUP AI ---
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # Ambil 20 baris terakhir untuk detail teknis saat ini
-    recent_data = df.tail(20).to_string(index=False)
+    # Ambil 10 data terbaru saja (lebih ringan dari 30)
+    recent_context = df.tail(10).to_string(index=False)
     
-    instruksi_sistem = f"""
-    Anda adalah Analis Senior Power Quality di PT Putra Arga Binangun (LUCKY INDAH KERAMIK).
+    # Masukkan ringkasan ke instruksi (bukan seluruh dataframe!)
+    sys_instruct = f"""
+    Anda adalah Analis PT Putra Arga Binangun.
     
-    INGATAN GLOBAL (Seluruh Dataset):
-    - Total Data: {total_rows} baris.
-    - Data Pertama Kali Diambil (Record #1): {first_record}
-    - Data Paling Baru (Record #{total_rows}): {last_record}
+    RINGKASAN DATABASE:
+    - Total Data: {total} baris.
+    - Awal Data (Sejarah): {start_data}
+    - Akhir Data (Sekarang): {end_data}
+    - Statistik Global: {stats}
     
-    RINGKASAN STATISTIK (Seluruh Data):
-    {stats_summary}
+    DATA TERBARU:
+    {recent_context}
     
-    DETAIL DATA TERBARU (20 Menit/Baris Terakhir):
-    {recent_data}
-    
-    TUGAS ANDA:
-    1. Gunakan 'INGATAN GLOBAL' untuk menjawab pertanyaan tentang sejarah, awal data, atau total durasi monitoring.
-    2. Gunakan 'DETAIL DATA TERBARU' untuk menjawab kondisi teknis saat ini.
-    3. Gunakan 'RINGKASAN STATISTIK' untuk menjawab pertanyaan tentang rata-rata atau nilai tertinggi sepanjang sejarah.
-    4. Jawablah langsung ke intinya dengan Bahasa Indonesia yang profesional.
-    5. JANGAN menampilkan kode Python.
+    TUGAS: Jawab pertanyaan user dengan singkat berdasarkan ringkasan di atas.
+    Jangan gunakan kode Python. Jawab langsung hasilnya.
     """
 
-    # --- INTERFACE CHAT ---
-    prompt = st.chat_input("Tanya apa saja (Contoh: Kapan data pertama diambil? atau Berapa rata-rata V_avg?)")
+    # --- 3. CHAT INTERFACE ---
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]): st.write(msg["content"])
+
+    prompt = st.chat_input("Tanya sejarah data atau kondisi sekarang...")
     
     if prompt:
-        with st.chat_message("user"):
-            st.write(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"): st.write(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Gemini 3 sedang menelusuri database..."):
+            with st.spinner("Berpikir..."):
                 try:
                     response = client.models.generate_content(
                         model="gemini-3-flash-preview",
                         contents=[prompt],
-                        config=types.GenerateContentConfig(
-                            system_instruction=instruksi_sistem
-                        ),
+                        config=types.GenerateContentConfig(system_instruction=sys_instruct),
                     )
                     st.write(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
                 except Exception as e:
-                    if "429" in str(e):
-                        st.error("Batas kuota Gemini 3 tercapai. Tunggu 1 menit atau coba lagi besok.")
-                    else:
-                        st.error(f"Kendala: {e}")
+                    st.error(f"AI Timeout/Error: {e}")
+else:
+    st.error(f"Gagal memuat data. Pesan: {stats}")
 
-    # --- FITUR TAMBAHAN: VISUALISASI CEPAT ---
-    with st.expander("Lihat Tren Tegangan (Auto-Graph)"):
-        if 'v_avg' in df.columns or 'V_avg' in df.columns:
-            v_col = 'v_avg' if 'v_avg' in df.columns else 'V_avg'
-            st.line_chart(df[v_col].tail(100))
-        else:
-            st.info("Kolom V_avg tidak ditemukan untuk membuat grafik.")
+# --- 4. GRAFIK (OPSIONAL & RINGAN) ---
+if st.button("Tampilkan Grafik Tren (100 Data Terakhir)"):
+    st.line_chart(df.select_dtypes(include=['number']).tail(100))
